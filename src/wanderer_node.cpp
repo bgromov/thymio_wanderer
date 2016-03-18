@@ -64,47 +64,48 @@ class ThymioWanderer
     // 1  1  0  = 6  -- turn more to the right
     // 1  1  1  = 7  -- ? turn till the view is clear
 
+    float v = 0.2;
+    float w = 0.3;
+
     switch(obstacle_map.all)
     {
       case 0:
-        vel.linear.x = 0.1;
+        vel.linear.x = v;
         vel.angular.z = 0.0;
       break;
       case 1:
         // slow down and start turning left
-        //vel.linear.x = 0.07;
         vel.linear.x = 0.0;
-        vel.angular.z = 0.15;
+        vel.angular.z = w;
       break;
       case 2:
         // stop and turn till view is clear
         vel.linear.x = 0.0;
-        vel.angular.z = 0.15;
+        vel.angular.z = w;
       break;
       case 3:
         // stop and turn left
         vel.linear.x = 0.0;
-        vel.angular.z = 0.15;
+        vel.angular.z = w;
       break;
       case 4:
         // slow down and start turning right
-        //vel.linear.x = 0.07;
         vel.linear.x = 0.0;
-        vel.angular.z = -0.15;
+        vel.angular.z = -w;
       break;
       case 5:
         // probably can go
-        vel.linear.x = 0.1;
+        vel.linear.x = v;
         vel.angular.z = 0.0;
       break;
       case 6:
         // stop and turn right
         vel.linear.x = 0.0;
-        vel.angular.z = -0.15;
+        vel.angular.z = -w;
       break;
       case 7:
         vel.linear.x = 0.0;
-        vel.angular.z = 0.1;
+        vel.angular.z = w;
       break;
     }
   }
