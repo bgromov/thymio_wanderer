@@ -9,6 +9,12 @@ class ThymioWanderer
   ros::Subscriber sub_proximity_center;
   ros::Subscriber sub_proximity_left;
   ros::Subscriber sub_proximity_right;
+  ros::Subscriber sub_proximity_center_right;
+  ros::Subscriber sub_proximity_center_left;
+  ros::Subscriber sub_proximity_rear_right;
+  ros::Subscriber sub_proximity_rear_left;
+  ros::Subscriber sub_proximity_ground_right;
+  ros::Subscriber sub_proximity_ground_left;
   ros::Publisher pub_cmd_vel;
   ros::NodeHandle node;
 
@@ -19,22 +25,34 @@ class ThymioWanderer
     PROXIMITY_RIGHT,
     PROXIMITY_CENTER,
     PROXIMITY_LEFT,
+    PROXIMITY_CENTER_RIGHT,
+    PROXIMITY_CENTER_LEFT,
+    PROXIMITY_REAR_RIGHT,
+    PROXIMITY_REAR_LEFT,
+    PROXIMITY_GROUND_RIGHT,
+    PROXIMITY_GROUND_LEFT,
   };
 
   typedef union
   {
     struct
     {
-      uint8_t right: 1;
-      uint8_t center: 1;
-      uint8_t left: 1;
+      uint16_t right: 1;
+      uint16_t center: 1;
+      uint16_t left: 1;
+      uint16_t center_right: 1;
+      uint16_t center_left: 1;
+      uint16_t rear_right: 1;
+      uint16_t rear_left: 1;
+      uint16_t ground_right: 1;
+      uint16_t ground_left: 1;
     };
-    uint8_t all;
+    uint16_t all;
   } obstacle_map_t;
 
   obstacle_map_t obstacle_map;
 
-  void callbackProximity(const sensor_msgs::RangeConstPtr& msg, uint8_t sensor_id)
+  void callbackProximity(const sensor_msgs::RangeConstPtr& msg, uint16_t sensor_id)
   {
     // Fill in the obstacle binary 'map'
     if (msg->range < 0.10)
@@ -53,7 +71,7 @@ class ThymioWanderer
 
   void wander()
   {
-    // We have 8 possible states in obstacle map
+    // We have 8 possible states (we use only 3 sensors out of 9) in obstacle map
     // L  C  R
     // 0  0  0  = 0  -- keep going (go straight)
     // 0  0  1  = 1  -- turn a bit to the left
