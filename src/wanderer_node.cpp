@@ -4,6 +4,9 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/Range.h>
 
+#include <tf/tf.h>
+#include <tf/transform_listener.h>
+
 class ThymioWanderer
 {
   ros::Subscriber sub_proximity_center;
@@ -15,8 +18,15 @@ class ThymioWanderer
   ros::Subscriber sub_proximity_rear_left;
   ros::Subscriber sub_proximity_ground_right;
   ros::Subscriber sub_proximity_ground_left;
+
+  ros::Subscriber sub_thymio_pose_;
+  ros::Subscriber sub_target_pose_;
+
   ros::Publisher pub_cmd_vel;
+
   ros::NodeHandle node;
+
+  tf::TransformListener tf_ls_;
 
   geometry_msgs::Twist vel;
 
@@ -52,6 +62,15 @@ class ThymioWanderer
 
   obstacle_map_t obstacle_map;
 
+  tf::StampedTransform prox_left_;
+  tf::StampedTransform prox_right_;
+
+  tf::Pose current_pose_;
+  tf::Pose target_pose_;
+
+  double dist_left_;
+  double dist_right_;
+
   void callbackProximity(const sensor_msgs::RangeConstPtr& msg, uint16_t sensor_id)
   {
     // Fill in the obstacle binary 'map'
@@ -66,7 +85,24 @@ class ThymioWanderer
       obstacle_map.all &= ~(1 << sensor_id);
     }
 
-    ROS_INFO("Obstacle map: %d %d %d", obstacle_map.left, obstacle_map.center, obstacle_map.right);
+    if (msg->range < 0.5)
+    {
+      tf::Vector3 range(msg->range, 0.0, 0.0);
+
+      switch(sensor_id)
+      {
+        case PROXIMITY_LEFT:
+          dist_left_ = fabs((prox_left_ * range).getY());
+          break;
+        case PROXIMITY_RIGHT:
+          dist_right_ = fabs((prox_right_ * range).getY());
+          break;
+      }
+
+      ROS_INFO("Left: %3.4f, Right: %3.4f", dist_left_, dist_right_);
+    }
+
+    //ROS_INFO("Obstacle map: %d %d %d", obstacle_map.left, obstacle_map.center, obstacle_map.right);
   }
 
   void wander()
@@ -128,17 +164,34 @@ class ThymioWanderer
     }
   }
 
+  void thymioPoseCb(const geometry_msgs::PoseConstPtr& msg)
+  {
+    tf::poseMsgToTF(*msg, current_pose_);
+
+    target_pose_.getOrigin();
+    current_pose_.getOrigin();
+
+  }
+
+  void targetPoseCb(const geometry_msgs::PoseConstPtr& msg)
+  {
+    tf::poseMsgToTF(*msg, target_pose_);
+  }
+
   void init()
   {
     sub_proximity_center = node.subscribe<sensor_msgs::Range>("/proximity/center", 10, boost::bind(&ThymioWanderer::callbackProximity, this, _1, PROXIMITY_CENTER));
     sub_proximity_left = node.subscribe<sensor_msgs::Range>("/proximity/left", 10, boost::bind(&ThymioWanderer::callbackProximity, this, _1, PROXIMITY_LEFT));
     sub_proximity_right = node.subscribe<sensor_msgs::Range>("/proximity/right", 10, boost::bind(&ThymioWanderer::callbackProximity, this, _1, PROXIMITY_RIGHT));
 
+    sub_thymio_pose_ = node.subscribe<geometry_msgs::Pose>("/gazebo/thymio_base_link", 10, boost::bind(&ThymioWanderer::thymioPoseCb, this, _1));
+    sub_target_pose_ = node.subscribe<geometry_msgs::Pose>("/gazebo/target_pose", 10, boost::bind(&ThymioWanderer::targetPoseCb, this, _1));
+
     pub_cmd_vel = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
   }
 
 public:
-  ThymioWanderer()
+  ThymioWanderer(): dist_left_(0.0), dist_right_(0.0)
   {
     obstacle_map.all = 0;
     this->init();
@@ -152,8 +205,18 @@ public:
 
     while(ros::ok())
     {
-      wander();
-      pub_cmd_vel.publish(vel);
+      try
+      {
+        tf_ls_.lookupTransform("base_link", "proximity_left_link", ros::Time(0), prox_left_);
+        tf_ls_.lookupTransform("base_link", "proximity_right_link", ros::Time(0), prox_right_);
+      }
+      catch(tf::TransformException& e)
+      {
+        ROS_ERROR("%s", e.what());
+        ros::Duration(1.0).sleep();
+      }
+//      wander();
+//      pub_cmd_vel.publish(vel);
 
       loop_rate.sleep();
       ros::spinOnce();
