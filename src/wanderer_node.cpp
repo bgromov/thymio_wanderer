@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <ros/ros.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Twist.h>
@@ -164,13 +165,36 @@ class ThymioWanderer
     }
   }
 
+  double sign(double num)
+  {
+    if (num > 0.0) return 1.0;
+    else if (num < 0.0) return -1.0;
+    else return 0.0;
+  }
+
   void thymioPoseCb(const geometry_msgs::PoseConstPtr& msg)
   {
     tf::poseMsgToTF(*msg, current_pose_);
 
-    target_pose_.getOrigin();
-    current_pose_.getOrigin();
+    tf::Vector3 heading = target_pose_.getOrigin() - current_pose_.getOrigin();
+    ROS_INFO("Heading vec: %3.3f %3.3f %3.3f", heading.getX(), heading.getY(), heading.getZ());
 
+    tf::Vector3 x_unit = current_pose_.getBasis() * tf::Vector3(1.0, 0.0, 0.0);
+    ROS_INFO("X unit vec: %3.3f %3.3f %3.3f", x_unit.getX(), x_unit.getY(), x_unit.getZ());
+
+    tf::Vector3 cross = heading.cross(x_unit) ;
+    ROS_INFO("Cross vec: %3.3f %3.3f %3.3f", cross.getX(), cross.getY(), cross.getZ());
+
+    double yaw = -asin(cross.length() / sqrt(heading.length2() * x_unit.length2())) * sign(cross.getZ());
+
+    double gain = 1.0;
+
+    vel.linear.x = 0.0;
+    vel.angular.z = yaw / M_PI * gain;
+
+    pub_cmd_vel.publish(vel);
+
+    ROS_INFO("Yaw: %3.4f", yaw * 180.0 / M_PI);
   }
 
   void targetPoseCb(const geometry_msgs::PoseConstPtr& msg)
