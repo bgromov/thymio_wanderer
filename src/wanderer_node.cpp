@@ -8,6 +8,10 @@
 #include <tf/tf.h>
 #include <tf/transform_listener.h>
 
+#include <Eigen/Dense>
+
+using Eigen::MatrixXd;
+
 class ThymioWanderer
 {
   ros::Subscriber sub_proximity_center;
