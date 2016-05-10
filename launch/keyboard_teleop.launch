@@ -1,0 +1,4 @@
+<launch>
+  <node name="teleop" pkg="thymio_navigation" type="remote_to_twist.py" output="screen" required="true" />
+  <node name="keyboard" pkg="keyboard" type="keyboard" output="screen" required="true" />
+</launch>
