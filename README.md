@@ -87,4 +87,4 @@ an appropriate config:
 $ roslaunch thymioid rviz.launch
 ```
     
-Camera display is disabled by default, but can be enabled by checking the corresponding box on the Displays pane on the right.
+Camera display is disabled by default, but can be enabled by checking the corresponding box on the Displays pane on the left.
