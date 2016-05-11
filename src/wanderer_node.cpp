@@ -5,6 +5,8 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/Range.h>
 
+#include <ar_track_alvar_msgs/AlvarMarkers.h>
+
 #include <tf/tf.h>
 #include <tf/transform_listener.h>
 
