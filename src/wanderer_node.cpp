@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 #include <ros/ros.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Twist.h>
@@ -19,15 +20,8 @@ class ThymioWanderer
   ros::Subscriber sub_proximity_center;
   ros::Subscriber sub_proximity_left;
   ros::Subscriber sub_proximity_right;
-  ros::Subscriber sub_proximity_center_right;
-  ros::Subscriber sub_proximity_center_left;
-  ros::Subscriber sub_proximity_rear_right;
-  ros::Subscriber sub_proximity_rear_left;
-  ros::Subscriber sub_proximity_ground_right;
-  ros::Subscriber sub_proximity_ground_left;
 
-  ros::Subscriber sub_thymio_pose_;
-  ros::Subscriber sub_target_pose_;
+  ros::Subscriber sub_ar_markers_;
 
   ros::Publisher pub_cmd_vel;
 
@@ -36,6 +30,17 @@ class ThymioWanderer
   tf::TransformListener tf_ls_;
 
   geometry_msgs::Twist vel;
+
+  struct Landmark
+  {
+    uint32_t id;
+    double range;
+    double bearing;
+
+    Landmark(): id(-1), range(0.0), bearing(0.0) {}
+  };
+
+  std::vector<Landmark> landmarks_;
 
   enum
   {
@@ -178,34 +183,59 @@ class ThymioWanderer
     else return 0.0;
   }
 
-  void thymioPoseCb(const geometry_msgs::PoseConstPtr& msg)
+  double yawFromVector3(const tf::Vector3& v)
   {
-    tf::poseMsgToTF(*msg, current_pose_);
-
-    tf::Vector3 heading = target_pose_.getOrigin() - current_pose_.getOrigin();
-    ROS_INFO("Heading vec: %3.3f %3.3f %3.3f", heading.getX(), heading.getY(), heading.getZ());
-
-    tf::Vector3 x_unit = current_pose_.getBasis() * tf::Vector3(1.0, 0.0, 0.0);
-    ROS_INFO("X unit vec: %3.3f %3.3f %3.3f", x_unit.getX(), x_unit.getY(), x_unit.getZ());
-
+    tf::Vector3 heading = v;
+    tf::Vector3 x_unit = tf::Vector3(1.0, 0.0, 0.0);
     tf::Vector3 cross = heading.cross(x_unit) ;
-    ROS_INFO("Cross vec: %3.3f %3.3f %3.3f", cross.getX(), cross.getY(), cross.getZ());
 
     double yaw = -asin(cross.length() / sqrt(heading.length2() * x_unit.length2())) * sign(cross.getZ());
 
-    double gain = 1.0;
-
-    vel.linear.x = 0.0;
-    vel.angular.z = yaw / M_PI * gain;
-
-    pub_cmd_vel.publish(vel);
-
-    ROS_INFO("Yaw: %3.4f", yaw * 180.0 / M_PI);
+    return yaw;
   }
 
-  void targetPoseCb(const geometry_msgs::PoseConstPtr& msg)
+  void markersCb(const ar_track_alvar_msgs::AlvarMarkersConstPtr& msg)
   {
-    tf::poseMsgToTF(*msg, target_pose_);
+    std::vector<Landmark> lv;
+
+    // Iterate over markers array
+    for (size_t i = 0; i < msg->markers.size(); i++)
+    {
+      // Extract single marker
+      ar_track_alvar_msgs::AlvarMarker m = msg->markers[i];
+      tf::StampedTransform m_tf;
+      Landmark l;
+
+      try
+      {
+        // Find transformation from marker to robot's base link
+        tf_ls_.lookupTransform("base_link", std::string("ar_marker_") + boost::lexical_cast<std::string>(m.id), ros::Time(0), m_tf);
+
+        // Calculate the center of the cube
+        tf::Vector3 cube_center = m_tf * tf::Vector3(0.0, 0.0, -0.025);
+
+//        ROS_INFO("[%u] %3.3f, %3.3f, %3.3f : %3.3f, %3.3f, %3.3f", m.id,
+//                 m_tf.getOrigin().getX(), m_tf.getOrigin().getY(), m_tf.getOrigin().getZ(),
+//                 cube_center.getX(), cube_center.getY(), cube_center.getZ());
+
+        // Calculate range and bearing and store them in local array
+        l.id = m.id;
+        l.range = m_tf.getOrigin().length();
+        l.bearing = yawFromVector3(m_tf.getOrigin());
+        lv.push_back(l);
+
+        ROS_INFO("Landmark [%u] range: %2.3f, bearing: %3.2f", l.id, l.range, l.bearing * 180.0 / M_PI);
+      }
+      catch(tf::TransformException& e)
+      {
+        ROS_ERROR("%s", e.what());
+        ros::Duration(1.0).sleep();
+        return;
+      }
+    }
+
+    // Once everything is fine, copy (swap) local array to landmarks_
+    landmarks_.swap(lv);
   }
 
   void init()
@@ -214,8 +244,7 @@ class ThymioWanderer
     sub_proximity_left = node.subscribe<sensor_msgs::Range>("/proximity/left", 10, boost::bind(&ThymioWanderer::callbackProximity, this, _1, PROXIMITY_LEFT));
     sub_proximity_right = node.subscribe<sensor_msgs::Range>("/proximity/right", 10, boost::bind(&ThymioWanderer::callbackProximity, this, _1, PROXIMITY_RIGHT));
 
-    sub_thymio_pose_ = node.subscribe<geometry_msgs::Pose>("/gazebo/thymio_base_link", 10, boost::bind(&ThymioWanderer::thymioPoseCb, this, _1));
-    sub_target_pose_ = node.subscribe<geometry_msgs::Pose>("/gazebo/target_pose", 10, boost::bind(&ThymioWanderer::targetPoseCb, this, _1));
+    sub_ar_markers_ = node.subscribe<ar_track_alvar_msgs::AlvarMarkers>("/ar_pose_marker", 100, boost::bind(&ThymioWanderer::markersCb, this, _1));
 
     pub_cmd_vel = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
   }
@@ -247,6 +276,8 @@ public:
       }
 //      wander();
 //      pub_cmd_vel.publish(vel);
+
+//      ROS_INFO("Landmarks in the array: %lu", landmarks_.size());
 
       loop_rate.sleep();
       ros::spinOnce();
